@@ -5,6 +5,7 @@ import pandas as pd
 import onnxruntime as rt
 from PIL import Image
 import huggingface_hub
+from exiftool import ExifToolHelper
 
 # Define the path to save the text files / Lokasi untuk menyimpan output tags (.txt)
 output_path = './captions/'
@@ -92,10 +93,10 @@ def process_predictions_with_thresholds(preds, tag_data, character_thresh, gener
 
     return final_tags
 
-def tag_images(image_folder, character_tags_first=False, general_thresh=0.35, character_thresh=0.85, hide_rating_tags=False, remove_separator=False):
+def tag_images(image_folder, character_tags_first=False, general_thresh=0.35, character_thresh=0.85, hide_rating_tags=False, remove_separator=False, output_to="Both"):
     os.makedirs(output_path, exist_ok=True)
     model, tag_data, target_size = load_model_and_tags(VIT_MODEL_DSV3_REPO)
-    
+
     # Process each image in the folder / Proses setiap gambar dalam folder
     processed_files = []
     
@@ -113,8 +114,25 @@ def tag_images(image_folder, character_tags_first=False, general_thresh=0.35, ch
                 final_tags_str = final_tags_str.replace("_", " ")
 
             caption_file_path = os.path.join(output_path, f"{os.path.splitext(image_file)[0]}.txt")
-            with open(caption_file_path, 'w') as f:
-                f.write(final_tags_str)
+
+            if output_to in ["Text File", "Both"]:
+                with open(caption_file_path, 'w') as f:
+                    f.write(final_tags_str)
+
+            if output_to in ["Metadata", "Both"]:
+                try:
+                    with ExifToolHelper() as et:
+                        et.set_tags(
+                            [image_path],
+                            tags={
+                                "IPTC:Keywords": final_tags,
+                                "XMP:Subject": final_tags
+                            },
+                            params=["-P", "-overwrite_original"]
+                        )
+                    print(f"Successfully added tags to {image_path}")
+                except Exception as e:
+                    print(f"Error processing {image_path}: {str(e)}")
 
             processed_files.append(image_file)
 
@@ -129,7 +147,8 @@ iface = gr.Interface(
         gr.Slider(minimum=0, maximum=1, step=0.01, value=0.35, label="General tags threshold"),
         gr.Slider(minimum=0, maximum=1, step=0.01, value=0.85, label="Character tags threshold"),
         gr.Checkbox(label="Hide rating tags"),
-        gr.Checkbox(label="Remove separator", value=False)
+        gr.Checkbox(label="Remove separator", value=False),
+        gr.Radio(choices=["Text File", "Metadata", "Both"], value="Both", label="Output to")
     ],
     outputs=[
         gr.Textbox(label="Status"),
