@@ -22,17 +22,6 @@ def download_model(model_repo):
     return csv_path, model_path
 
 # Load model and labels
-def load_model(model_repo):
-    csv_path, model_path = download_model(model_repo)
-    tags_df = pd.read_csv(csv_path)
-    tag_names = tags_df["name"].tolist()
-    model = rt.InferenceSession(model_path)
-
-    # Access the model target input size based on the model's first input details
-    target_size = model.get_inputs()[0].shape[2] # Assuming the model input is square
-
-    return model, tag_names, target_size
-
 # Image preprocessing function / Memproses gambar
 def prepare_image(image, target_size):
     canvas = Image.new("RGBA", image.size, (255, 255, 255))
@@ -102,88 +91,78 @@ def tag_images(image_folder, recursive=False, character_tags_first=False, genera
     # Process each image in the folder / Proses setiap gambar dalam folder
     processed_files = []
 
-    if recursive:
-        for root, _, files in os.walk(image_folder):
-            for image_file in files:
-                if image_file.lower().endswith(('png', 'jpg', 'jpeg', 'bmp', 'gif', 'webp')):
-                    image_path = os.path.join(root, image_file)
-                    try:
-                        with Image.open(image_path) as image:
-                            processed_image = prepare_image(image, target_size)
-                            preds = model.run(None, {model.get_inputs()[0].name: processed_image})[0]
+    def process_image_file(image_path, output_to, remove_separator, final_tags):
+        final_tags_str = ", ".join(final_tags)
+        if remove_separator:
+            final_tags_str = final_tags_str.replace("_", " ")
 
-                        final_tags = process_predictions_with_thresholds(preds, tag_data, character_thresh, general_thresh, hide_rating_tags, character_tags_first)
+        caption_file_path = os.path.join(output_path, f"{os.path.splitext(os.path.basename(image_path))[0]}.txt")
 
-                        final_tags_str = ", ".join(final_tags)
-                        if remove_separator:
-                            final_tags_str = final_tags_str.replace("_", " ")
+        if output_to in ["Text File", "Both"]:
+            with open(caption_file_path, 'w') as f:
+                f.write(final_tags_str)
 
-                        caption_file_path = os.path.join(output_path, f"{os.path.splitext(image_file)[0]}.txt")
+        if output_to in ["Metadata", "Both"]:
+            update_metadata(image_path, final_tags)
 
-                        if output_to in ["Text File", "Both"]:
-                            with open(caption_file_path, 'w') as f:
-                                f.write(final_tags_str)
+    def update_metadata(image_path, final_tags):
+        try:
+            with ExifToolHelper() as et:
+                existing = et.get_tags([image_path], ["IPTC:Keywords", "XMP:Subject"])[0]
+                
+                def normalize_tags(tags):
+                    if isinstance(tags, list):
+                        return [str(t).strip() for t in tags if t]
+                    if isinstance(tags, str):
+                        return [t.strip() for t in tags.split(",") if t.strip()]
+                    return []
+                
+                iprc_list = normalize_tags(existing.get("IPTC:Keywords"))
+                xmp_list = normalize_tags(existing.get("XMP:Subject"))
+                
+                all_tags = set(iprc_list + xmp_list).union(set(final_tags))
+                
+                et.set_tags(
+                    [image_path],
+                    tags={
+                        "IPTC:Keywords": list(all_tags),
+                        "XMP:Subject": list(all_tags)
+                    },
+                    params=["-P", "-overwrite_original"]
+                )
+            print(f"Successfully added tags to {image_path}")
+        except Exception as e:
+            print(f"Error processing {image_path}: {str(e)}")
 
-                        if output_to in ["Metadata", "Both"]:
-                            try:
-                                with ExifToolHelper() as et:
-                                    et.set_tags(
-                                        [image_path],
-                                        tags={
-                                            "IPTC:Keywords": final_tags,
-                                            "XMP:Subject": final_tags
-                                        },
-                                        params=["-P", "-overwrite_original"]
-                                    )
-                                print(f"Successfully added tags to {image_path}")
-                            except Exception as e:
-                                print(f"Error processing {image_path}: {str(e)}")
+    # Process all images
+    def get_image_paths(img_folder: str, recurse: bool) -> iter:
+        if recurse:
+            for root, _, files in os.walk(img_folder):
+                for file in files:
+                    if file.lower().endswith(('png', 'jpg', 'jpeg', 'bmp', 'gif', 'webp')):
+                        yield os.path.join(root, file)
+        else:
+            for file in os.listdir(img_folder):
+                if file.lower().endswith(('png', 'jpg', 'jpeg', 'bmp', 'gif', 'webp')):
+                    yield os.path.join(img_folder, file)
 
-                        processed_files.append(image_file)
-                    except Exception as e:
-                        print(f"Error processing {image_path}: {str(e)}")
-    else:
-        for image_file in os.listdir(image_folder):
-            if image_file.lower().endswith(('png', 'jpg', 'jpeg', 'bmp', 'gif', 'webp')):
-                image_path = os.path.join(image_folder, image_file)
-                try:
-                    with Image.open(image_path) as image:
-                        processed_image = prepare_image(image, target_size)
-                        preds = model.run(None, {model.get_inputs()[0].name: processed_image})[0]
+    for image_path in get_image_paths(image_folder, recursive):
+        try:
+            with Image.open(image_path) as image:
+                processed_image = prepare_image(image, target_size)
+                preds = model.run(None, {model.get_inputs()[0].name: processed_image})[0]
 
-                    final_tags = process_predictions_with_thresholds(preds, tag_data, character_thresh, general_thresh, hide_rating_tags, character_tags_first)
+            final_tags = process_predictions_with_thresholds(
+                preds, tag_data, character_thresh, general_thresh,
+                hide_rating_tags, character_tags_first
+            )
 
-                    final_tags_str = ", ".join(final_tags)
-                    if remove_separator:
-                        final_tags_str = final_tags_str.replace("_", " ")
-
-                    caption_file_path = os.path.join(output_path, f"{os.path.splitext(image_file)[0]}.txt")
-
-                    if output_to in ["Text File", "Both"]:
-                        with open(caption_file_path, 'w') as f:
-                            f.write(final_tags_str)
-
-                    if output_to in ["Metadata", "Both"]:
-                        try:
-                            with ExifToolHelper() as et:
-                                et.set_tags(
-                                    [image_path],
-                                    tags={
-                                        "IPTC:Keywords": final_tags,
-                                        "XMP:Subject": final_tags
-                                    },
-                                    params=["-P", "-overwrite_original"]
-                                )
-                            print(f"Successfully added tags to {image_path}")
-                        except Exception as e:
-                            print(f"Error processing {image_path}: {str(e)}")
-
-                    processed_files.append(image_file)
-                except Exception as e:
-                    print(f"Error processing {image_path}: {str(e)}")
-
-    # Return both a completion message and a newline-separated list of processed files / Mengeluarkan pesan penyelesaian
-    return "Process completed. Check caption files in the 'captions' directory.", "\n".join(processed_files)
+            process_image_file(image_path, output_to, remove_separator, final_tags)
+            processed_files.append(os.path.basename(image_path))
+        except Exception as e:
+            print(f"Error processing {image_path}: {str(e)}")
+    
+    return "Process completed.", "\n".join(processed_files)
 
 iface = gr.Interface(
     fn=tag_images,
@@ -202,7 +181,7 @@ iface = gr.Interface(
         gr.Textbox(label="Processed Files")
     ],
     title="Image Captioning and Tagging with SmilingWolf/wd-vit-tagger-v3",
-    description="This tool tags all images in the specified directory and saves to .txt files or embeds metadata directly into image files (supported formats: jpg (recommended), jpeg, png, bmp, gif, webp). Check 'Remove separator' to replace '_' with spaces in tags. Use Flag to generate a report which can be found in '.gradio' folder."
+    description="This tool tags all images in the specified directory and saves to .txt files inside 'captions' directory or embeds metadata directly into image files (supported formats: jpg (recommended), jpeg, png, bmp, gif, webp). Check 'Remove separator' to replace '_' with spaces in tags. Use Flag to generate a report which can be found in '.gradio' folder."
 )
 
 if __name__ == "__main__":
