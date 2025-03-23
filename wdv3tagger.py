@@ -101,7 +101,7 @@ def tag_images(image_folder, character_tags_first=False, general_thresh=0.35, ch
     processed_files = []
     
     for image_file in os.listdir(image_folder):
-        if image_file.lower().endswith(('png', 'jpg', 'jpeg', 'bmp', 'gif')):
+        if image_file.lower().endswith(('png', 'jpg', 'jpeg', 'bmp', 'gif', 'webp')):
             image_path = os.path.join(image_folder, image_file)
             with Image.open(image_path) as image:
                 processed_image = prepare_image(image, target_size)
@@ -159,4 +159,4 @@ iface = gr.Interface(
 )
 
 if __name__ == "__main__":
-    iface.launch()
+    iface.launch(inbrowser=True)
