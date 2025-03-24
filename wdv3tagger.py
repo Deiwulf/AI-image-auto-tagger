@@ -59,9 +59,29 @@ def load_model_and_tags(model_repo):
         general=list(np.where(df["category"] == 0)[0]),
         character=list(np.where(df["category"] == 4)[0]),
     )
-    model = rt.InferenceSession(model_path)
+    # CUDA/CPU check and reporting
+    cuda_available = False
+    try:
+        import torch
+        if torch.cuda.is_available():
+            print("\n\033[92mCUDA detected! Using GPU acceleration\033[0m")
+            cuda_available = True
+        else:
+            print("\n\033[93mCUDA not available - falling back to CPU\033[0m")
+            cuda_available = False
+    except ImportError:
+        print("\n\033[91mPyTorch not installed - CPU only mode\033[0m")
+        cuda_available = False
+
+    sess_options = rt.SessionOptions()
+    sess_options.log_severity_level = 2
+    providers = ['CUDAExecutionProvider', 'CPUExecutionProvider'] if cuda_available else ['CPUExecutionProvider']
+    model = rt.InferenceSession(model_path,
+                              providers=providers,
+                              sess_options=sess_options)
+    print(f"Initialized with: {model.get_providers()}")
     target_size = model.get_inputs()[0].shape[2]
-    
+
     return model, tag_data, target_size
 
 # Function to tag all images in a directory and save the captions / Fitur untuk tagging gambar dalam folder dan menyimpan caption dengan file .txt
@@ -91,17 +111,28 @@ def tag_images(image_folder, recursive=False, character_tags_first=False, genera
     # Process each image in the folder / Proses setiap gambar dalam folder
     processed_files = []
 
-    def process_image_file(image_path, output_to, remove_separator, final_tags):
+    def process_image_file(image_path, image_folder, output_to, remove_separator, final_tags):
+        relative_path = os.path.relpath(image_path, image_folder)
+        if output_to != "Metadata":
+            caption_dir = os.path.join(output_path, os.path.dirname(relative_path))
+            os.makedirs(caption_dir, exist_ok=True)
+            caption_file_path = os.path.join(caption_dir, f"{os.path.splitext(os.path.basename(image_path))[0]}.txt")
+        else:
+            caption_file_path = os.path.join(output_path, f"{os.path.splitext(os.path.basename(image_path))[0]}.txt")
+    
+    
         final_tags_str = ", ".join(final_tags)
         if remove_separator:
             final_tags_str = final_tags_str.replace("_", " ")
-
-        caption_file_path = os.path.join(output_path, f"{os.path.splitext(os.path.basename(image_path))[0]}.txt")
-
+    
         if output_to in ["Text File", "Both"]:
-            with open(caption_file_path, 'w') as f:
-                f.write(final_tags_str)
-
+            try:
+                with open(caption_file_path, 'w') as f:
+                    f.write(final_tags_str)
+                    print(f"Successfully processed {caption_file_path}")
+            except Exception as e:
+                print(f"Error processing {caption_file_path}: {str(e)}")
+    
         if output_to in ["Metadata", "Both"]:
             update_metadata(image_path, final_tags)
 
@@ -146,21 +177,26 @@ def tag_images(image_folder, recursive=False, character_tags_first=False, genera
                 if file.lower().endswith(('png', 'jpg', 'jpeg', 'bmp', 'gif', 'webp')):
                     yield os.path.join(img_folder, file)
 
-    for image_path in get_image_paths(image_folder, recursive):
-        try:
-            with Image.open(image_path) as image:
-                processed_image = prepare_image(image, target_size)
-                preds = model.run(None, {model.get_inputs()[0].name: processed_image})[0]
+    try:
+        for image_path in get_image_paths(image_folder, recursive):
+            try:
+                with Image.open(image_path) as image:
+                    processed_image = prepare_image(image, target_size)
+                    preds = model.run(None, {model.get_inputs()[0].name: processed_image})[0]
 
-            final_tags = process_predictions_with_thresholds(
-                preds, tag_data, character_thresh, general_thresh,
-                hide_rating_tags, character_tags_first
-            )
+                final_tags = process_predictions_with_thresholds(
+                    preds, tag_data, character_thresh, general_thresh,
+                    hide_rating_tags, character_tags_first
+                )
 
-            process_image_file(image_path, output_to, remove_separator, final_tags)
-            processed_files.append(os.path.basename(image_path))
-        except Exception as e:
-            print(f"Error processing {image_path}: {str(e)}")
+                process_image_file(image_path, image_folder, output_to, remove_separator, final_tags)
+                processed_files.append(os.path.basename(image_path))
+            except Exception as e:
+                print(f"Error processing {image_path}: {str(e)}")
+    except FileNotFoundError:
+        error_message = "Error: The specified directory does not exist."
+        print(error_message)  # Log the error to the console
+        return error_message, ""
     
     return "Process completed.", "\n".join(processed_files)
 
