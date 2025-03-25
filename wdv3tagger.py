@@ -119,12 +119,7 @@ def validate_file_format(file_path: str, output_to) -> tuple:
     
     if output_to == "Metadata" and ext == "bmp":
         msg = "BMP metadata not supported"
-        return (False, msg)
-
-    expected_mime = type_map.get(ext)
-    if not expected_mime:
-        msg = f"Unsupported extension .{ext}"
-        return (False, msg)
+        return (False, msg, file_path)
     
     try:
         with ExifToolHelper() as et:
@@ -132,13 +127,34 @@ def validate_file_format(file_path: str, output_to) -> tuple:
             actual_mime = metadata.get('File:MIMEType', '')
     except Exception as e:
         msg = f"Error reading metadata: {str(e)}"
-        return (False, msg)
+        return (False, msg, file_path)
     
-    if expected_mime not in actual_mime:
-        msg = f"Format mismatch: {os.path.basename(file_path)} has .{ext} extension but actual format is {actual_mime}"
-        return (False, msg)
+    # Check if the actual MIME type is supported
+    if actual_mime not in type_map.values():
+        msg = f"Unsupported format: {actual_mime}"
+        return (False, msg, file_path)
 
-    return (True, None)
+    # Attempt to correct the extension
+    correct_ext = next((k for k, v in type_map.items() if v in actual_mime), None)
+    if ext != correct_ext:
+        if correct_ext:
+            new_file_path = os.path.splitext(file_path)[0] + '.' + correct_ext
+            if not os.path.exists(new_file_path):
+                try:
+                    os.rename(file_path, new_file_path)
+                    print(f"Auto-corrected extension: Renamed '{os.path.basename(file_path)}' to '{os.path.basename(new_file_path)}'")
+                    return (True, None, new_file_path)
+                except Exception as e:
+                    msg = f"Error correcting extension: {str(e)}"
+                    return (False, msg, file_path)
+            else:
+                msg = f"Format mismatch: {os.path.basename(file_path)} has .{ext} extension but actual format is {actual_mime} and renaming would overwrite an existing file."
+                return (False, msg, file_path)
+        else:
+            msg = f"Format mismatch: {os.path.basename(file_path)} has .{ext} extension but actual format is {actual_mime}. Could not determine correct extension."
+            return (False, msg, file_path)
+
+    return (True, None, file_path)
 
 # MAIN
 def tag_images(image_folder, recursive=False, general_thresh=0.35, character_thresh=0.85, hide_rating_tags=True, character_tags_first=False, remove_separator=False, overwrite_tags=False, output_to="Metadata"):
@@ -219,7 +235,7 @@ def tag_images(image_folder, recursive=False, general_thresh=0.35, character_thr
                 for file in files:
                     file_path = os.path.join(root, file)
                     if os.path.isfile(file_path):
-                        valid, msg = validate_file_format(file_path, output_to)
+                        valid, msg, file_path = validate_file_format(file_path, output_to)
                         if not valid:
                             print(f"Skipping {file_path}: {msg}")
                             skipped_files.append(os.path.basename(file_path))
@@ -229,7 +245,7 @@ def tag_images(image_folder, recursive=False, general_thresh=0.35, character_thr
             for file in os.listdir(img_folder):
                 file_path = os.path.join(img_folder, file)
                 if os.path.isfile(file_path):   
-                    valid, msg = validate_file_format(file_path, output_to)
+                    valid, msg, file_path = validate_file_format(file_path, output_to)
                     if not valid:
                         print(f"Skipping {file_path}: {msg}")
                         skipped_files.append(os.path.basename(file_path))
