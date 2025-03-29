@@ -1,11 +1,22 @@
 import os
 import gradio as gr
 import numpy as np
+import csv
+import sys
 import pandas as pd
 import onnxruntime as rt
 from PIL import Image
 import huggingface_hub
 from exiftool import ExifToolHelper
+
+#increase CSV limit for Flag report
+max_int = sys.maxsize
+while True:
+    try:
+        csv.field_size_limit(max_int)
+        break
+    except OverflowError:
+        max_int = int(max_int / 10)
 
 # Define the path to save the text files / Lokasi untuk menyimpan output tags (.txt)
 output_path = './captions/'
@@ -122,7 +133,7 @@ def validate_file_format(file_path: str, output_to) -> tuple:
         return (False, msg, file_path)
     
     try:
-        with ExifToolHelper() as et:
+        with ExifToolHelper(encoding="utf-8") as et:
             metadata = et.get_tags([file_path], 'File:MIMEType')[0]
             actual_mime = metadata.get('File:MIMEType', '')
     except Exception as e:
@@ -176,7 +187,7 @@ def tag_images(image_folder, recursive=False, general_thresh=0.35, character_thr
 
     def update_metadata(image_path, final_tags, overwrite_tags):
         try:
-            with ExifToolHelper() as et:
+            with ExifToolHelper(encoding="utf-8") as et:
                 existing = et.get_tags([image_path], ["IPTC:Keywords", "XMP:Subject"])[0]
                 
                 iptc_list = normalize_tags(existing.get("IPTC:Keywords"))
@@ -221,7 +232,7 @@ def tag_images(image_folder, recursive=False, general_thresh=0.35, character_thr
                 final_tags_str = final_tags_str.replace("_", " ")
     
             try:
-                with open(caption_file_path, 'w') as f:
+                with open(caption_file_path, 'w', encoding='utf-8') as f:
                     f.write(final_tags_str)
                     print(f"Successfully processed {caption_file_path}")
             except Exception as e:
