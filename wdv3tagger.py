@@ -146,7 +146,11 @@ def validate_file_format(file_path: str, output_to) -> tuple:
         return (False, msg, file_path)
 
     # Attempt to correct the extension
-    correct_ext = next((k for k, v in type_map.items() if v in actual_mime), None)
+    if actual_mime == 'image/jpeg' and ext == 'jpeg':
+        correct_ext = 'jpeg'
+    else:
+        correct_ext = next((k for k, v in type_map.items() if v in actual_mime), None)
+
     if ext != correct_ext:
         if correct_ext:
             new_file_path = os.path.splitext(file_path)[0] + '.' + correct_ext
