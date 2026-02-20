@@ -9,7 +9,7 @@ The successor of WD14 tagger and an alternative to DeepDanbooru - now with a met
 - **Output**: There are 2 output modes: embedding tags directly into images for galleries **OR** *.txt* files for AI training
 - **Supported models**: Latest WaifuDiffusion v3 tagger architecture featuring SmilingWolf/wd-vit-tagger-v3 model
 - **Supported files**: JPG/JPEG (recommended), PNG, WEBP, GIF, BMP(no metadata)
-- **Easy user interface**: By utilizing gradio for GUI, the usage of this script should be smooth
+- **Easy user interface**: By utilizing gradio GUI, the usage of this script should be smooth
 - **Process subdirectories**: recursively goes through all directories within a given one. In case of writing tags to *.txt*, it mirrors the folder structure 
 - **User preferred threshold**: Using the gradio slider, the user can adjust the threshold of the tagger model
 - **Hide rating tags**: You can choose whether to output the rating tags (Like "General", "Explicit", "Questionable", etc) or not
@@ -28,13 +28,13 @@ Steps to run:
 4. Activate the new venv: *
     - Windows: `venv\scripts\activate` 
 5. Install the requirements `pip install -r requirements.txt`  
-    - Optionally visit https://pytorch.org/ and install one fitting your system for a performance boost (~69% here)   
-6. Run the script `python wdv3tagger.py` OR use `start.bat` on Windows (using venv)
+    - Optionally visit https://pytorch.org/ and install one fitting your system for a performance boost   
+6. Run the script `python wdv3tagger.py` OR use `start.bat` on Windows (uses venv)
 
 \* Virtual environment is optional, but recommended to keep this isolated. You can skip to step 5 if you want to install and run in a global environment
 
 ## Disclaimer
-This has been thoroughly tested, but still do be savvy and back up before running, and report issues if any.
+This has been thoroughly tested, but still do be savvy and back up before running.
 
-## Was this free tool useful to you?
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/Q5Q41J7Y2M)
+## Was this free software useful to you?
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/N4N21UMI9H)
